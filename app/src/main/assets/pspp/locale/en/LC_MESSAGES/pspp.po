@@ -1,0 +1,37 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: GNU PSPP 2.1.2\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Descriptive Statistics"
+msgstr "Descriptive Statistics"
+
+msgid "Frequency Table"
+msgstr "Frequency Table"
+
+msgid "Crosstabulation"
+msgstr "Crosstabulation"
+
+msgid "Independent Samples Test"
+msgstr "Independent Samples Test"
+
+msgid "Paired Samples Test"
+msgstr "Paired Samples Test"
+
+msgid "One-Way ANOVA"
+msgstr "One-Way ANOVA"
+
+msgid "Correlations"
+msgstr "Correlations"
+
+msgid "Linear Regression"
+msgstr "Linear Regression"
+
+msgid "Chi-Square Test"
+msgstr "Chi-Square Test"
+
+msgid "Reliability Statistics"
+msgstr "Reliability Statistics"

@@ -1,0 +1,24 @@
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+GNU PSPP 2.1.2 is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This Android application (PSPP Studio) embeds GNU PSPP 2.1.2 and is
+distributed under the GNU General Public License version 3.0 (GPLv3).
+
+Corresponding Upstream Source:
+  https://ftp.wayne.edu/gnu/pspp/pspp-2.1.2.tar.gz
+  https://ftp.wayne.edu/gnu/pspp/pspp-2.1.2.tar.gz.sig
+  GNU Keyring: https://ftp.gnu.org/gnu/gnu-keyring.gpg
+  Pinned GPG Fingerprint: C2D1 AB06 1656 AAC5 4B5E 9754 8519 9DE8 C664 8E90
+
+All Android build scripts (build-native.sh), JNI bindings (pspp_jni.c),
+and cross-compilation patches (/patches/*.patch) are included in the
+repository and bundled inside app/src/main/assets/pspp/patches/.

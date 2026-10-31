@@ -1,0 +1,6 @@
+{
+  "name": "PSPP Studio",
+  "description": "Native Android statistical analysis workbench embedding GNU PSPP 2.1.2 via JNI with Syntax Editor, Data & Variable View grids, HTML/CSV/PDF Output Viewer, SAV/CSV I/O, and 9 guided statistical procedures.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

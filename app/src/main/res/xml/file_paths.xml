@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path name="pspp_exports" path="exports/" />
+    <cache-path name="pspp_output" path="pspp_runs/" />
+    <files-path name="pspp_files" path="." />
+</paths>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Bar chart columns inside 66dp safe zone (21..87) -->
+    <path
+        android:fillColor="#FF0EA5E9"
+        android:pathData="M28,58h10v18h-10z" />
+    <path
+        android:fillColor="#FF38BDF8"
+        android:pathData="M42,46h10v30h-10z" />
+    <path
+        android:fillColor="#FF34D399"
+        android:pathData="M56,38h10v38h-10z" />
+    <path
+        android:fillColor="#FF818CF8"
+        android:pathData="M70,30h10v46h-10z" />
+    <!-- Sigma + regression line accent -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M29,48L47,36L61,40L76,26"
+        android:strokeWidth="3.5"
+        android:strokeColor="#FFF8FAFC"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="#FFF8FAFC"
+        android:pathData="M29,48m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0" />
+    <path
+        android:fillColor="#FFF8FAFC"
+        android:pathData="M47,36m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0" />
+    <path
+        android:fillColor="#FFF8FAFC"
+        android:pathData="M61,40m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0" />
+    <path
+        android:fillColor="#FFF8FAFC"
+        android:pathData="M76,26m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0" />
+    <!-- Baseline -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M25,78L83,78"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FF94A3B8"
+        android:strokeLineCap="round" />
+</vector>

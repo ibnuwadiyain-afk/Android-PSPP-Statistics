@@ -1,0 +1,35 @@
+# Reason: Fix gnulib cross-compilation assumptions and Android Bionic libc gaps (nl_langinfo CODESET/RADIXCHAR on API 24, localeconv decimal_point nullability, program_invocation_name).
+--- a/gl/nl_langinfo.c
++++ b/gl/nl_langinfo.c
+@@ -124,6 +124,13 @@
++#if defined(__ANDROID__) && __ANDROID_API__ < 26
++  if (item == CODESET)
++    return (char *) "UTF-8";
++  if (item == RADIXCHAR)
++    return (char *) ".";
++  if (item == THOUSEP)
++    return (char *) "";
++#endif
+--- a/src/libpspp/i18n.c
++++ b/src/libpspp/i18n.c
+@@ -895,7 +895,12 @@
+   struct lconv *lconv = localeconv ();
+-  if (lconv && lconv->decimal_point && lconv->decimal_point[0] != '\0')
++  if (lconv != NULL && lconv->decimal_point != NULL
++      && lconv->decimal_point[0] != '\0')
+     decimal = lconv->decimal_point[0];
++  else
++    decimal = '.';
+--- a/gl/progname.c
++++ b/gl/progname.c
+@@ -54,6 +54,9 @@
+   if (argv0 == NULL)
+     {
++#if defined(__ANDROID__)
++      argv0 = "pspp";
++#else
+       fputs ("A NULL argv[0] was passed through an exec system call.\n",
+              stderr);
+       abort ();
++#endif
+     }

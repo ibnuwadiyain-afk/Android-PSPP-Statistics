@@ -1,0 +1,47 @@
+# Reason: Honour TMPDIR on Android (where /tmp does not exist) and allow runtime override of PKGDATADIR and LOCALEDIR via PSPP_DATADIR and PSPP_LOCALEDIR environment variables.
+--- a/src/libpspp/temp-file.c
++++ b/src/libpspp/temp-file.c
+@@ -62,7 +62,12 @@
+   if (dir == NULL)
+     dir = getenv ("TMPDIR");
+   if (dir == NULL)
+     dir = getenv ("TMP");
+   if (dir == NULL)
+-    dir = "/tmp";
++    {
++#if defined(__ANDROID__)
++      dir = "/data/local/tmp";
++#else
++      dir = "/tmp";
++#endif
++    }
+--- a/gl/relocatable.c
++++ b/gl/relocatable.c
+@@ -418,6 +418,16 @@
+ relocate (const char *pathname)
+ {
++#if defined(__ANDROID__)
++  if (pathname != NULL)
++    {
++      const char *env_data = getenv ("PSPP_DATADIR");
++      if (env_data != NULL && strstr (pathname, "/share/pspp") != NULL)
++        return env_data;
++      const char *env_locale = getenv ("PSPP_LOCALEDIR");
++      if (env_locale != NULL && strstr (pathname, "/share/locale") != NULL)
++        return env_locale;
++    }
++#endif
+   if (IS_ABSOLUTE_PATH (pathname))
+     {
+       /* Standard relocatable lookup */
+--- a/src/ui/terminal/main.c
++++ b/src/ui/terminal/main.c
+@@ -88,7 +88,10 @@
+   set_program_name (argv[0]);
+   setlocale (LC_ALL, "");
+-  bindtextdomain (PACKAGE, relocate (locale_dir));
++  {
++    const char *override_locale = getenv ("PSPP_LOCALEDIR");
++    bindtextdomain (PACKAGE, override_locale ? override_locale : relocate (locale_dir));
++  }
+   textdomain (PACKAGE);

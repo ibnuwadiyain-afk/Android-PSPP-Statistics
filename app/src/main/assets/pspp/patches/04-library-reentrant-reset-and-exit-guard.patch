@@ -1,0 +1,71 @@
+# Reason: Expose a library-callable entry point pspp_jni_run_main(argc, argv) with reentrant output/dataset state cleanup and siglongjmp guard instead of terminating the hosting Android JVM via exit().
+--- a/src/ui/terminal/main.c
++++ b/src/ui/terminal/main.c
+@@ -45,6 +45,25 @@
++#include <setjmp.h>
++#include <stdatomic.h>
++
++static TLS sigjmp_buf pspp_jni_exit_jmp;
++static TLS int pspp_jni_jmp_armed = 0;
++static atomic_int pspp_jni_cancel_requested = 0;
++
++void
++pspp_request_cancel (void)
++{
++  atomic_store (&pspp_jni_cancel_requested, 1);
++}
++
++int
++pspp_is_cancel_requested (void)
++{
++  return atomic_load (&pspp_jni_cancel_requested);
++}
++
++void
++pspp_safe_exit (int status)
++{
++  if (pspp_jni_jmp_armed)
++    siglongjmp (pspp_jni_exit_jmp, status == 0 ? 1000 : status);
++  exit (status);
++}
++
++#ifdef PSPP_ANDROID_LIBRARY
++#define main pspp_cli_entry_main
++#define exit(code) pspp_safe_exit(code)
++#endif
++
+ int
+ main (int argc, char **argv)
+ {
+@@ -112,6 +131,15 @@
+   the_session = session_create ();
+   dataset_create (the_session, "");
+ 
++#ifdef PSPP_ANDROID_LIBRARY
++  atomic_store (&pspp_jni_cancel_requested, 0);
++  pspp_jni_jmp_armed = 1;
++  int jmp_rc = sigsetjmp (pspp_jni_exit_jmp, 1);
++  if (jmp_rc != 0)
++    {
++      pspp_jni_jmp_armed = 0;
++      output_engine_pop ();
++      session_destroy (the_session);
++      i18n_done ();
++      return (jmp_rc == 1000) ? EXIT_SUCCESS : jmp_rc;
++    }
++#endif
++
+   for (size_t i = 0; i < parser->n_files; i++)
+     {
++      if (pspp_is_cancel_requested ())
++        break;
+       /* Execute syntax file */
+@@ -148,5 +176,6 @@
++#ifdef PSPP_ANDROID_LIBRARY
++  pspp_jni_jmp_armed = 0;
++#endif
+   output_engine_pop ();
+   session_destroy (the_session);
+   i18n_done ();
+   return msg_ui_any_errors () ? EXIT_FAILURE : EXIT_SUCCESS;
+ }

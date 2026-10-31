@@ -1,0 +1,101 @@
+<resources>
+    <string name="app_name">PSPP Studio</string>
+    <string name="app_subtitle">بيئة التحليل الإحصائي GNU PSPP 2.1.2</string>
+
+    <!-- Navigation Tabs -->
+    <string name="nav_syntax">الأوامر</string>
+    <string name="nav_data">البيانات</string>
+    <string name="nav_analyze">تحليل</string>
+    <string name="nav_output">النتائج</string>
+    <string name="nav_files">الملفات</string>
+    <string name="nav_about">حول</string>
+
+    <!-- Syntax Editor -->
+    <string name="syntax_title">محرر أوامر PSPP (.sps)</string>
+    <string name="run_all">تشغيل الكل</string>
+    <string name="run_selection">تشغيل المحدد</string>
+    <string name="cancel_run">إلغاء</string>
+    <string name="running_engine">جاري تشغيل محرك PSPP…</string>
+    <string name="open_sps">فتح .sps</string>
+    <string name="save_sps">حفظ .sps</string>
+    <string name="load_sample">أمثلة جاهزة</string>
+    <string name="syntax_errors_found">تم اكتشاف أخطاء في الصياغة</string>
+    <string name="syntax_no_errors">الصياغة سليمة</string>
+    <string name="selection_range_hint">حدد نطاق الأسطر للتنفيذ</string>
+
+    <!-- Data & Variable Editor -->
+    <string name="data_view_tab">عرض البيانات</string>
+    <string name="variable_view_tab">عرض المتغيرات</string>
+    <string name="add_case">إضافة صف</string>
+    <string name="delete_case">حذف صف</string>
+    <string name="add_variable">إضافة متغير</string>
+    <string name="delete_variable">حذف متغير</string>
+    <string name="sync_to_syntax">توليد الأوامر</string>
+    <string name="export_sav">تصدير .sav</string>
+    <string name="export_csv">تصدير .csv</string>
+    <string name="var_name">الاسم</string>
+    <string name="var_type">النوع</string>
+    <string name="var_width">العرض</string>
+    <string name="var_decimals">الكسور</string>
+    <string name="var_label">الوصف</string>
+    <string name="var_values">القيم</string>
+    <string name="var_missing">المفقود</string>
+    <string name="var_measure">المقياس</string>
+    <string name="edit_cell_title">تعديل قيمة الخلية</string>
+    <string name="edit_variable_title">تعديل خصائص المتغير</string>
+
+    <!-- Analysis Procedures -->
+    <string name="analyze_title">الإجراءات الإحصائية التحليلية</string>
+    <string name="proc_descriptives">الإحصاءات الوصفية</string>
+    <string name="proc_descriptives_desc">المتوسط، الانحراف المعياري، التباين، الحد الأدنى والأقصى، الالتواء، التفلطح</string>
+    <string name="proc_frequencies">التكرارات</string>
+    <string name="proc_frequencies_desc">جداول التكرارات، النسب المئوية، التكرار المتجمع، المئينات</string>
+    <string name="proc_crosstabs">الجداول المتقاطعة (Crosstabs)</string>
+    <string name="proc_crosstabs_desc">جداول الاقتران، اختبار مربع كاي لبيرسون، معامل فاي و V لكرامر</string>
+    <string name="proc_ttest">اختبار ت (لعينتين مستقلتين ومقترنتين)</string>
+    <string name="proc_ttest_desc">مقارنة المتوسطات للعينات المستقلة والمزدوجة مع فترة ثقة ٩٥٪</string>
+    <string name="proc_anova">تحليل التباين الأحادي (One-Way ANOVA)</string>
+    <string name="proc_anova_desc">مجموع المربعات بين وداخل المجموعات، نسبة F، ومستوى الدلالة</string>
+    <string name="proc_correlation">الارتباط الثنائي</string>
+    <string name="proc_correlation_desc">مصفوفة معامل ارتباط بيرسون والدلالة الإحصائية ثنائية الطرف</string>
+    <string name="proc_regression">الانحدار الخطي المتعدد</string>
+    <string name="proc_regression_desc">طريقة المربعات الصغرى، معامل التحديد R²، جدول التباين، ومعاملات بيتا</string>
+    <string name="proc_chisquare">اختبار مربع كاي (Chi-Square)</string>
+    <string name="proc_chisquare_desc">اختبار جودة المطابقة مقابل التوزيع المتساوي أو المتوقع</string>
+    <string name="proc_reliability">تحليل الثبات (ألفا كرونباخ)</string>
+    <string name="proc_reliability_desc">معامل ألفا كرونباخ للاتساق الداخلي وإحصاءات المفردات</string>
+    <string name="generated_syntax_preview">أوامر PSPP المولدة (قابلة للتعديل قبل التشغيل)</string>
+    <string name="run_procedure">تنفيذ التحليل</string>
+    <string name="copy_to_editor">فتح في محرر الأوامر</string>
+
+    <!-- Output Viewer -->
+    <string name="output_title">عارض نتائج PSPP</string>
+    <string name="output_html_tab">عرض HTML</string>
+    <string name="output_text_tab">نص عادي</string>
+    <string name="output_csv_tab">جدول CSV</string>
+    <string name="export_html">HTML</string>
+    <string name="export_pdf">طباعة / PDF</string>
+    <string name="export_txt">نص</string>
+    <string name="share_output">مشاركة</string>
+
+    <!-- Files & SAF -->
+    <string name="files_title">ملفات البيانات والاستيراد والتصدير</string>
+    <string name="open_file_saf">فتح ملف (.sav, .zsav, .por, .csv, .txt, .sps)</string>
+    <string name="save_dataset_saf">حفظ مجموعة البيانات النشطة (.sav / .csv)</string>
+    <string name="recent_files">الملفات الأخيرة</string>
+    <string name="csv_preview_title">معاينة أنواع الأعمدة لملف CSV / نص محدد</string>
+    <string name="apply_import">استيراد إلى البيانات النشطة</string>
+
+    <!-- About & GPLv3 -->
+    <string name="about_title">حول GNU PSPP 2.1.2 والامتثال لرخصة GPLv3</string>
+    <string name="upstream_source">المصدر الرسمي لـ GNU PSPP 2.1.2 والتوقيع الرقمي</string>
+    <string name="gpg_fingerprint">بصمة مفتاح التوقيع الرقمي GPG المعتمدة</string>
+    <string name="patches_title">الترقيعات البرمجية المطبقة لنظام أندرويد (/patches)</string>
+    <string name="gpl_license_title">رخصة جنو العمومية الإصدار الثالث (GPLv3)</string>
+    <string name="language_label">لغة الواجهة ومحرك الإحصاء</string>
+    <string name="lang_en">English</string>
+    <string name="lang_ar">العربية (RTL)</string>
+    <string name="lang_fr">Français</string>
+    <string name="save">حفظ</string>
+    <string name="close">إغلاق</string>
+</resources>

@@ -1,0 +1,57 @@
+# Reason: Make Cairo/Pango/Pangocairo optional in PSPP 2.1.2 configure and stub cairo chart hooks when building headless CLI/HTML/CSV/TXT drivers for Android.
+# Note: PSPP 2.1.2 has --without-gui, --without-libpq, and --without-perl-module, but configure.ac unconditionally invokes PKG_CHECK_MODULES([CAIRO], [cairo >= 1.5 pango >= 1.22 pangocairo >= 1.22]).
+# Assumption (flagged in VERIFY.md): Patching configure + guarding HAVE_CAIRO in src/output/driver.c and src/output/charts/ allows HTML, CSV, and ASCII/text drivers to operate without linking libcairo/libpango/libharfbuzz/libfontconfig.
+--- a/configure.ac
++++ b/configure.ac
+@@ -178,10 +178,21 @@
+-PKG_CHECK_MODULES([CAIRO], [cairo >= 1.5 pango >= 1.22 pangocairo >= 1.22], [],
+-  [PSPP_REQUIRED_PREREQ([cairo 1.5 or later and pango 1.22 or later])])
++AC_ARG_WITH([cairo],
++  [AS_HELP_STRING([--without-cairo], [build without Cairo/Pango PDF/PostScript/SVG chart rendering (HTML/CSV/TXT drivers remain active)])],
++  [with_cairo=$withval],
++  [with_cairo=yes])
++AS_IF([test "x$with_cairo" != "xno"], [
++  PKG_CHECK_MODULES([CAIRO], [cairo >= 1.5 pango >= 1.22 pangocairo >= 1.22],
++    [AC_DEFINE([HAVE_CAIRO], [1], [Define to 1 if Cairo and Pango are available.])],
++    [PSPP_REQUIRED_PREREQ([cairo 1.5 or later and pango 1.22 or later (or pass --without-cairo)])])
++], [
++  CAIRO_CFLAGS=""
++  CAIRO_LIBS=""
++  AC_SUBST([CAIRO_CFLAGS])
++  AC_SUBST([CAIRO_LIBS])
++])
++AM_CONDITIONAL([HAVE_CAIRO], [test "x$with_cairo" != "xno"])
+--- a/src/output/driver.c
++++ b/src/output/driver.c
+@@ -42,7 +42,9 @@
+ static const struct output_driver_factory *const factories[] =
+   {
++#ifdef HAVE_CAIRO
+     &pdf_driver_factory,
+     &ps_driver_factory,
+     &svg_driver_factory,
++#endif
+     &txt_driver_factory,
+     &html_driver_factory,
+     &csv_driver_factory,
+     &odt_driver_factory,
+     NULL
+   };
+--- a/src/output/html.c
++++ b/src/output/html.c
+@@ -312,11 +312,15 @@
+     case OUTPUT_ITEM_CHART:
++#ifdef HAVE_CAIRO
+       if (html->chart_cnt++ > 0)
+         {
+           char *file_name = xr_draw_png_chart (item->chart, html->file_name,
+                                                html->chart_cnt,
+                                                &html->fg, &html->bg);
+           fprintf (html->file, "<p><img src=\"%s\" alt=\"chart\"></p>\n",
+                    file_name);
+           free (file_name);
+         }
++#else
++      fprintf (html->file, "<div class=\"pspp-chart-note\">[Chart summary rendered in tabular output]</div>\n");
++#endif
+       break;

@@ -1,0 +1,101 @@
+<resources>
+    <string name="app_name">PSPP Studio</string>
+    <string name="app_subtitle">GNU PSPP 2.1.2 Statistical Workbench</string>
+
+    <!-- Navigation Tabs -->
+    <string name="nav_syntax">Syntax</string>
+    <string name="nav_data">Data</string>
+    <string name="nav_analyze">Analyze</string>
+    <string name="nav_output">Output</string>
+    <string name="nav_files">Files</string>
+    <string name="nav_about">About</string>
+
+    <!-- Syntax Editor -->
+    <string name="syntax_title">PSPP Syntax Editor (.sps)</string>
+    <string name="run_all">Run All</string>
+    <string name="run_selection">Run Selection</string>
+    <string name="cancel_run">Cancel</string>
+    <string name="running_engine">Executing PSPP Engine…</string>
+    <string name="open_sps">Open .sps</string>
+    <string name="save_sps">Save .sps</string>
+    <string name="load_sample">Samples</string>
+    <string name="syntax_errors_found">Syntax Errors Detected</string>
+    <string name="syntax_no_errors">Syntax Clean</string>
+    <string name="selection_range_hint">Select line range to execute</string>
+
+    <!-- Data & Variable Editor -->
+    <string name="data_view_tab">Data View</string>
+    <string name="variable_view_tab">Variable View</string>
+    <string name="add_case">Add Row</string>
+    <string name="delete_case">Delete Row</string>
+    <string name="add_variable">Add Variable</string>
+    <string name="delete_variable">Delete Variable</string>
+    <string name="sync_to_syntax">Generate Syntax</string>
+    <string name="export_sav">Export .sav</string>
+    <string name="export_csv">Export .csv</string>
+    <string name="var_name">Name</string>
+    <string name="var_type">Type</string>
+    <string name="var_width">Width</string>
+    <string name="var_decimals">Decimals</string>
+    <string name="var_label">Label</string>
+    <string name="var_values">Values</string>
+    <string name="var_missing">Missing</string>
+    <string name="var_measure">Measure</string>
+    <string name="edit_cell_title">Edit Cell Value</string>
+    <string name="edit_variable_title">Edit Variable Attributes</string>
+
+    <!-- Analysis Procedures -->
+    <string name="analyze_title">Statistical Analysis Procedures</string>
+    <string name="proc_descriptives">Descriptives</string>
+    <string name="proc_descriptives_desc">Mean, SD, variance, min, max, skewness, kurtosis, SE</string>
+    <string name="proc_frequencies">Frequencies</string>
+    <string name="proc_frequencies_desc">Frequency counts, percentages, cumulative tables, quartiles</string>
+    <string name="proc_crosstabs">Crosstabs</string>
+    <string name="proc_crosstabs_desc">Contingency tables, Pearson Chi-Square, Phi, Cramer\'s V</string>
+    <string name="proc_ttest">T-Test (Indep. &amp; Paired)</string>
+    <string name="proc_ttest_desc">Independent-samples &amp; paired-samples t-tests with 95% CI</string>
+    <string name="proc_anova">One-Way ANOVA</string>
+    <string name="proc_anova_desc">Between/within-group sums of squares, F-ratio, p-value</string>
+    <string name="proc_correlation">Bivariate Correlation</string>
+    <string name="proc_correlation_desc">Pearson r correlation matrix and two-tailed significance</string>
+    <string name="proc_regression">Linear Regression</string>
+    <string name="proc_regression_desc">OLS multiple regression, R², ANOVA, unstandardized/beta weights</string>
+    <string name="proc_chisquare">Chi-Square Test</string>
+    <string name="proc_chisquare_desc">Goodness-of-fit test against equal or expected proportions</string>
+    <string name="proc_reliability">Reliability (Alpha)</string>
+    <string name="proc_reliability_desc">Cronbach\'s alpha internal consistency and item-total stats</string>
+    <string name="generated_syntax_preview">Generated PSPP Syntax (Editable before running)</string>
+    <string name="run_procedure">Run Procedure</string>
+    <string name="copy_to_editor">Open in Syntax Editor</string>
+
+    <!-- Output Viewer -->
+    <string name="output_title">PSPP Output Viewer</string>
+    <string name="output_html_tab">HTML View</string>
+    <string name="output_text_tab">Plain Text</string>
+    <string name="output_csv_tab">CSV Table</string>
+    <string name="export_html">HTML</string>
+    <string name="export_pdf">Print / PDF</string>
+    <string name="export_txt">Text</string>
+    <string name="share_output">Share</string>
+
+    <!-- Files & SAF -->
+    <string name="files_title">Datasets, SAF Storage &amp; Import/Export</string>
+    <string name="open_file_saf">Open File (.sav, .zsav, .por, .csv, .txt, .sps)</string>
+    <string name="save_dataset_saf">Save Active Dataset (.sav / .csv)</string>
+    <string name="recent_files">Recent Files</string>
+    <string name="csv_preview_title">CSV / Delimited Text Column-Type Preview</string>
+    <string name="apply_import">Import into Active Dataset</string>
+
+    <!-- About & GPLv3 -->
+    <string name="about_title">About GNU PSPP 2.1.2 &amp; GPLv3 Compliance</string>
+    <string name="upstream_source">Official GNU PSPP 2.1.2 Source &amp; Signature</string>
+    <string name="gpg_fingerprint">Pinned GPG Signing Key Fingerprint</string>
+    <string name="patches_title">Applied Android Cross-Compilation Patches (/patches)</string>
+    <string name="gpl_license_title">GNU General Public License v3.0 (GPLv3)</string>
+    <string name="language_label">Interface &amp; Engine Language</string>
+    <string name="lang_en">English</string>
+    <string name="lang_ar">العربية (Arabic RTL)</string>
+    <string name="lang_fr">Français (French)</string>
+    <string name="save">Save</string>
+    <string name="close">Close</string>
+</resources>
