@@ -1,26 +1,24 @@
-# Reason: Honour TMPDIR on Android (where /tmp does not exist) and allow runtime override of PKGDATADIR and LOCALEDIR via PSPP_DATADIR and PSPP_LOCALEDIR environment variables.
---- a/src/libpspp/temp-file.c
-+++ b/src/libpspp/temp-file.c
-@@ -62,7 +62,12 @@
-   if (dir == NULL)
-     dir = getenv ("TMPDIR");
-   if (dir == NULL)
-     dir = getenv ("TMP");
-   if (dir == NULL)
--    dir = "/tmp";
-+    {
-+#if defined(__ANDROID__)
-+      dir = "/data/local/tmp";
-+#else
-+      dir = "/tmp";
+# Reason: Honour TMPDIR and runtime PSPP_DATADIR/PSPP_LOCALEDIR so init() points gettext at extracted .mo files on Android.
+--- a/gl/tmpdir.c
++++ b/gl/tmpdir.c
+@@ -133,6 +133,10 @@
+         dir = P_tmpdir;
+       else if (strcmp (P_tmpdir, "/tmp") != 0 && direxists ("/tmp"))
+         dir = "/tmp";
++#if defined __ANDROID__
++      else if (direxists ("/data/local/tmp"))
++        dir = "/data/local/tmp";
 +#endif
-+    }
+       else
+         {
+           __set_errno (ENOENT);
 --- a/gl/relocatable.c
 +++ b/gl/relocatable.c
-@@ -418,6 +418,16 @@
+@@ -489,6 +489,17 @@
+ const char *
  relocate (const char *pathname)
  {
-+#if defined(__ANDROID__)
++#if defined __ANDROID__
 +  if (pathname != NULL)
 +    {
 +      const char *env_data = getenv ("PSPP_DATADIR");
@@ -31,17 +29,21 @@
 +        return env_locale;
 +    }
 +#endif
-   if (IS_ABSOLUTE_PATH (pathname))
-     {
-       /* Standard relocatable lookup */
---- a/src/ui/terminal/main.c
-+++ b/src/ui/terminal/main.c
-@@ -88,7 +88,10 @@
-   set_program_name (argv[0]);
+ #if defined PIC && defined INSTALLDIR && ENABLE_COSTLY_RELOCATABLE
+   static int initialized;
+ 
+--- a/src/libpspp/i18n.c
++++ b/src/libpspp/i18n.c
+@@ -694,8 +694,10 @@
+ i18n_init (void)
+ {
    setlocale (LC_ALL, "");
--  bindtextdomain (PACKAGE, relocate (locale_dir));
-+  {
-+    const char *override_locale = getenv ("PSPP_LOCALEDIR");
-+    bindtextdomain (PACKAGE, override_locale ? override_locale : relocate (locale_dir));
-+  }
+-  char *allocated;
+-  bindtextdomain (PACKAGE, relocate2 (locale_dir, &allocated));
++  char *allocated = NULL;
++  const char *env_locale = getenv ("PSPP_LOCALEDIR");
++  bindtextdomain (PACKAGE, env_locale ? env_locale : relocate2 (locale_dir, &allocated));
++  bind_textdomain_codeset (PACKAGE, "UTF-8");
+   free (allocated);
    textdomain (PACKAGE);
+ 

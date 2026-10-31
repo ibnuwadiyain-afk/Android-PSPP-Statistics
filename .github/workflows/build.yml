@@ -17,13 +17,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install host build dependencies (Autotools, GPG, GSL/XML tools, Texinfo)
+      - name: Install host build dependencies (Autotools, GPG, Gettext/msgfmt, GSL/XML tools, Texinfo)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             autoconf automake autopoint libtool pkg-config \
             gettext texinfo bison flex gperf gnupg curl xz-utils \
-            python3 libxml2-utils imagemagick
+            python3 libxml2-utils imagemagick patch diffutils
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -52,10 +52,21 @@ jobs:
             native-build/downloads
           key: pspp-2.1.2-ndk-r27-${{ hashFiles('build-native.sh', 'patches/*.patch', 'app/src/main/cpp/pspp_jni.c') }}
 
-      - name: Run build-native.sh (Download, GPG Verify, Patch, Cross-Compile for arm64-v8a, armeabi-v7a, x86_64)
+      - name: Run build-native.sh (Download, GPG Verify, Dry-Run & Regenerate Patches, msgfmt .mo, Cross-Compile ABIs)
         run: |
           chmod +x ./build-native.sh
           ./build-native.sh 2>&1 | tee native-build.log
+
+      - name: Verify compiled .mo files in assets and absence of .po files
+        run: |
+          for lang in en ar fr; do
+            test -f "app/src/main/assets/pspp/locale/${lang}/LC_MESSAGES/pspp.mo"
+            file "app/src/main/assets/pspp/locale/${lang}/LC_MESSAGES/pspp.mo" | grep -i "GNU message catalog"
+          done
+          if find app/src/main/assets/pspp/locale -name "*.po" | grep -q .; then
+            echo "ERROR: Uncompiled .po files found in assets!" >&2
+            exit 1
+          fi
 
       - name: Ensure debug.keystore exists for debug and fallback release signing
         run: |
@@ -82,15 +93,15 @@ jobs:
             echo "No RELEASE_KEYSTORE_BASE64 secret configured; release build will use debug.keystore fallback."
           fi
 
-      - name: Build Debug, Release, ABI Split, and Universal APKs
+      - name: Build Debug and Release APKs (Release forces -PallowFallback=false to strip fallback engine)
         env:
           STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
-          gradle assembleDebug assembleRelease -PenableAbiSplits=true --stacktrace 2>&1 | tee gradle-build.log
+          gradle assembleDebug assembleRelease -PallowFallback=false -PenableAbiSplits=true --stacktrace 2>&1 | tee gradle-build.log
 
-      - name: Run JVM Unit & Robolectric Sample .sps Regression Tests
+      - name: Run JVM Unit & Robolectric Tests
         run: |
           gradle :app:testDebugUnitTest --stacktrace 2>&1 | tee unit-test.log
 
@@ -100,7 +111,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run Instrumented Smoke Test on Emulator (reactivecircus/android-emulator-runner)
+      - name: Run Native Engine Tests on Emulator (descriptives.sps, regression.sps vs expected output, and .sav round-trip)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -110,14 +121,15 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
-            gradle connectedDebugAndroidTest --stacktrace 2>&1 | tee instrumented-test.log
+            gradle connectedDebugAndroidTest -PallowFallback=false --stacktrace 2>&1 | tee instrumented-test.log
 
-      - name: Upload Native Libraries (.so), APKs, and Build Logs
+      - name: Upload Native Libraries (.so), Regenerated Patches, APKs, and Build Logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pspp-studio-apks-and-logs
           path: |
+            patches/*.patch
             app/src/main/jniLibs/**/*.so
             app/build/outputs/apk/**/*.apk
             app/build/reports/tests/**/*

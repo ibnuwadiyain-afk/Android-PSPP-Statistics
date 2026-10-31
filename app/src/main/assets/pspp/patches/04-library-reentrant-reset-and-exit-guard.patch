@@ -1,12 +1,15 @@
-# Reason: Expose a library-callable entry point pspp_jni_run_main(argc, argv) with reentrant output/dataset state cleanup and siglongjmp guard instead of terminating the hosting Android JVM via exit().
+# Reason: Expose library entry point pspp_cli_entry_main with atomic cancel check and siglongjmp exit() guard.
 --- a/src/ui/terminal/main.c
 +++ b/src/ui/terminal/main.c
-@@ -45,6 +45,25 @@
+@@ -59,6 +59,38 @@
+ #include "gettext.h"
+ #define _(msgid) gettext (msgid)
+ 
 +#include <setjmp.h>
 +#include <stdatomic.h>
 +
-+static TLS sigjmp_buf pspp_jni_exit_jmp;
-+static TLS int pspp_jni_jmp_armed = 0;
++static sigjmp_buf pspp_jni_exit_jmp;
++static int pspp_jni_jmp_armed = 0;
 +static atomic_int pspp_jni_cancel_requested = 0;
 +
 +void
@@ -34,12 +37,12 @@
 +#define exit(code) pspp_safe_exit(code)
 +#endif
 +
- int
- main (int argc, char **argv)
- {
-@@ -112,6 +131,15 @@
-   the_session = session_create ();
-   dataset_create (the_session, "");
+ static struct session *the_session;
+ 
+ static void add_syntax_reader (struct lexer *, const char *file_name,
+@@ -132,10 +164,30 @@
+   else
+     add_syntax_reader (lexer, "-", syntax_encoding, syntax_mode);
  
 +#ifdef PSPP_ANDROID_LIBRARY
 +  atomic_store (&pspp_jni_cancel_requested, 0);
@@ -50,22 +53,31 @@
 +      pspp_jni_jmp_armed = 0;
 +      output_engine_pop ();
 +      session_destroy (the_session);
++      random_done ();
++      settings_done ();
++      fh_done ();
++      lex_destroy (lexer);
 +      i18n_done ();
 +      return (jmp_rc == 1000) ? EXIT_SUCCESS : jmp_rc;
 +    }
 +#endif
 +
-   for (size_t i = 0; i < parser->n_files; i++)
+   /* Parse and execute syntax. */
+   lex_get (lexer);
+   for (;;)
      {
 +      if (pspp_is_cancel_requested ())
 +        break;
-       /* Execute syntax file */
-@@ -148,5 +176,6 @@
+       int result = cmd_parse (lexer, session_active_dataset (the_session));
+ 
+       if (result == CMD_EOF || result == CMD_FINISH)
+@@ -169,6 +221,9 @@
+     }
+ 
+ 
 +#ifdef PSPP_ANDROID_LIBRARY
 +  pspp_jni_jmp_armed = 0;
 +#endif
    output_engine_pop ();
    session_destroy (the_session);
-   i18n_done ();
-   return msg_ui_any_errors () ? EXIT_FAILURE : EXIT_SUCCESS;
- }
+ 

@@ -4,18 +4,19 @@ plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.google.devtools.ksp)
-  alias(libs.plugins.secrets)
   alias(libs.plugins.google.services)
 }
 
 val enableCmake = project.findProperty("useCmake")?.toString()?.toBoolean() == true
+// Gradle property -PallowFallback=false (default false for release builds, true for debug builds unless overridden)
+val allowFallbackProperty = project.findProperty("allowFallback")?.toString()?.toBoolean()
 
 android {
-  namespace = "com.example"
+  namespace = "org.pspp.mobile"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.aistudio.psppstudio.gnupsp"
+    applicationId = "org.pspp.mobile"
     minSdk = 24
     targetSdk = 35
     versionCode = 20102
@@ -39,8 +40,6 @@ android {
   }
 
   // ABI splits + universal APK as requested for multi-ABI native delivery.
-  // Enabled when -PenableAbiSplits=true (used in CI release/split builds) so standard single-APK
-  // emulator installs in development continue to work seamlessly.
   if (project.findProperty("enableAbiSplits")?.toString()?.toBoolean() == true) {
     splits {
       abi {
@@ -54,7 +53,7 @@ android {
 
   sourceSets {
     getByName("main") {
-      jniLibs.srcDirs("src/main/jniLibs")
+      jniLibs.directories.add("src/main/jniLibs")
     }
   }
 
@@ -95,14 +94,19 @@ android {
 
   buildTypes {
     release {
+      val allowReleaseFallback = allowFallbackProperty ?: false
+      buildConfigField("boolean", "ALLOW_FALLBACK", allowReleaseFallback.toString())
       isCrunchPngs = false
-      isMinifyEnabled = false
+      // When allowFallback is false (default for release), R8 shrinks/strips unused fallback classes
+      isMinifyEnabled = !allowReleaseFallback
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
       // AI Studio.
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
+      val allowDebugFallback = allowFallbackProperty ?: true
+      buildConfigField("boolean", "ALLOW_FALLBACK", allowDebugFallback.toString())
       // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
       // AI Studio.
       signingConfig = signingConfigs.getByName("debugConfig")
@@ -128,26 +132,11 @@ android {
   }
 }
 
-// Configure the Secrets Gradle Plugin to use .env and .env.example files
-// to match the convention used in Web projects.
-secrets {
-  propertiesFileName = ".env"
-  defaultPropertiesFileName = ".env.example"
-  ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
-}
-
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
 
-// Unused template dependencies are commented out to optimize APK size and build speed.
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
-  // implementation(platform(libs.firebase.bom))
-  // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
-  // implementation(libs.androidx.camera.camera2)
-  // implementation(libs.androidx.camera.core)
-  // implementation(libs.androidx.camera.lifecycle)
-  // implementation(libs.androidx.camera.view)
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.compose.material3)
@@ -159,26 +148,8 @@ dependencies {
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
-  // implementation(libs.androidx.navigation.compose)
-  // implementation(libs.androidx.room.ktx)
-  // implementation(libs.androidx.room.runtime)
-  // implementation(libs.coil.compose)
-  // implementation(libs.converter.moshi)
-  // implementation(libs.firebase.ai)
-  // implementation(libs.firebase.firestore)
-  // implementation(libs.firebase.auth)
-  // implementation(libs.androidx.credentials)
-  // implementation(libs.androidx.credentials.play.services)
-  // implementation(libs.googleid)
-  // implementation(libs.firebase.appcheck.recaptcha)
-  // implementation(libs.firebase.appcheck.debug)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
-  // implementation(libs.logging.interceptor)
-  // implementation(libs.moshi.kotlin)
-  // implementation(libs.okhttp)
-  // implementation(libs.play.services.location)
-  // implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
@@ -192,6 +163,4 @@ dependencies {
   androidTestImplementation(libs.androidx.runner)
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
-  // "ksp"(libs.androidx.room.compiler)
-  // "ksp"(libs.moshi.kotlin.codegen)
 }

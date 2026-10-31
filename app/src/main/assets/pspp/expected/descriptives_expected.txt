@@ -1,0 +1,15 @@
+# Stored Expected Output tokens for bundled sample: descriptives.sps
+# Dataset: clinical_trial.csv (N = 20 cases, 14 variables)
+# Verified by both CI native engine test (ExampleInstrumentedTest) and JVM test (ExampleRobolectricTest).
+20
+50.05
+145.70
+136.40
+218.70
+27.20
+69.35
+Intensive Therapy
+Standard Care
+Placebo Control
+Male
+Female

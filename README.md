@@ -1,86 +1,58 @@
-# PSPP Studio — Native GNU PSPP 2.1.2 for Android
+# PSPP Studio for Android (`org.pspp.mobile` — GNU PSPP 2.1.2)
 
-**PSPP Studio** is a native Android statistical analysis workbench (Kotlin + Jetpack Compose, Material 3, `minSdk 24`, `targetSdk 35`) that embeds **GNU PSPP 2.1.2** through JNI (`libpspp_jni.so`), providing a complete syntax editor, Data View & Variable View spreadsheet editors, an HTML/CSV/PDF output viewer, Storage Access Framework (SAF) file management, and 9 guided statistical analysis procedures.
-
----
-
-## 1. Upstream Source & Cryptographic Verification
-
-- **Upstream Release**: `https://ftp.wayne.edu/gnu/pspp/pspp-2.1.2.tar.gz`
-- **Detached GPG Signature**: `https://ftp.wayne.edu/gnu/pspp/pspp-2.1.2.tar.gz.sig`
-- **GNU Keyring**: `https://ftp.gnu.org/gnu/gnu-keyring.gpg`
-- **Pinned Signing Key Fingerprint**: `C2D1 AB06 1656 AAC5 4B5E 9754 8519 9DE8 C664 8E90`
-
-`build-native.sh` verifies `pspp-2.1.2.tar.gz.sig` against `gnu-keyring.gpg` using `gpg --status-fd 1 --verify` and aborts immediately if the signing fingerprint does not match `C2D1AB061656AAC54B5E975485199DE8C6648E90`.
+**PSPP Studio** (`org.pspp.mobile`) is a complete native Android statistical workbench (Kotlin + Jetpack Compose, Material 3, `minSdk = 24`, `targetSdk = 35`) designed around the **GNU PSPP 2.1.2** engine via JNI (`libpspp_jni.so`), with full **GPLv3** compliance, compiled `.mo` gettext catalogs, binary `.sav` & delimited `.csv` I/O, 9 interactive statistical analysis procedures, and localization in **English**, **Arabic (full RTL & Eastern Arabic numerals)**, and **French**.
 
 ---
 
-## 2. Building Native Libraries (`build-native.sh`) and APKs
+## 1. Honest Build & Fallback Architecture
 
-### Prerequisites (Linux or macOS Host)
-- Android SDK (`platforms;android-35`, `build-tools;35.0.0`)
-- Android NDK r27 (`27.0.12077973`), set via `ANDROID_NDK_HOME`
-- Host tools: `autoconf`, `automake`, `libtool`, `pkg-config`, `gettext`, `texinfo`, `bison`, `flex`, `gperf`, `gpg`, `curl`, `xz-utils`
-- JDK 17+
+1. **Fallback Honesty Banner & Export Stamping**:
+   - Whenever `libpspp_jni.so` is not loaded (`!PsppBridge.isNativeLoaded`), the app displays a persistent warning banner on the **Syntax**, **Data**, and **Output** screens:
+     > `Approximation mode: results are NOT from the real PSPP engine`
+   - Every HTML, Plain Text, and CSV output or file export generated while `libpspp_jni.so` is absent is stamped with that exact line.
+2. **Release Safeguard (`-PallowFallback=false`)**:
+   - `app/build.gradle.kts` defines the Gradle property `-PallowFallback` (`BuildConfig.ALLOW_FALLBACK`).
+   - It defaults to **`false` for `release` builds** (and `true` for `debug` builds unless `-PallowFallback=false` is passed), guaranteeing that a release APK can **never** silently fall back to non-PSPP results.
+3. **One-Command Reproducible NDK Build (`./build-native.sh`) & CI (`.github/workflows/build.yml`)**:
+   - Downloads `https://ftp.wayne.edu/gnu/pspp/pspp-2.1.2.tar.gz` and `.tar.gz.sig`, verifies the GPG signature against `https://ftp.gnu.org/gnu/gnu-keyring.gpg` pinning fingerprint `C2D1 AB06 1656 AAC5 4B5E 9754 8519 9DE8 C664 8E90`, and fails immediately on mismatch.
+   - Runs `patch --dry-run` on each patch in `/patches/` against the extracted `pspp-2.1.2` source first, prints which hunks succeed or fail, and automatically regenerates any failing patch from the actual source before applying.
+   - Compiles upstream `.po` files into binary `.mo` catalogs (`app/src/main/assets/pspp/locale/<lang>/LC_MESSAGES/pspp.mo`) using `msgfmt`.
+   - Cross-builds `zlib 1.3.1`, `libiconv 1.17`, `gettext 0.22.5 (libintl)`, `libxml2 2.12.7`, `gsl 2.8`, and `pspp 2.1.2` (`libpspp-core`, `libpspp`) for `arm64-v8a`, `armeabi-v7a`, and `x86_64` with **Android NDK r27 (`27.1.12297006`)**, outputting `app/src/main/jniLibs/<abi>/libpspp_jni.so`.
 
-### Step 1: Cross-Build Native Dependencies & PSPP 2.1.2
+---
+
+## 2. How to Build Locally or via GitHub Actions
+
+### Option A: GitHub Actions (Zero Local Setup)
+1. Download the project ZIP from AI Studio and push it to a GitHub repository.
+2. GitHub Actions automatically runs `.github/workflows/build.yml`:
+   - Installs Android SDK 35, NDK r27 (`27.1.12297006`), CMake 3.22.1, `gettext` (`msgfmt`), `gnupg`, `texinfo`, `perl`, and `python3`.
+   - Executes `./build-native.sh` for `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
+   - Builds universal and per-ABI split Debug & Release APKs (`./gradlew assembleDebug assembleRelease -PallowFallback=false`).
+   - Boots an Android API 34 `x86_64` emulator via `reactivecircus/android-emulator-runner@v2` and runs `./gradlew connectedDebugAndroidTest -PallowFallback=false` (`ExampleInstrumentedTest`).
+   - Uploads `pspp-native-jniLibs`, `pspp-android-apks`, and `pspp-build-and-test-logs` as workflow artifacts.
+
+### Option B: Local Linux / macOS Build
 ```bash
-export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.0.12077973"
+export ANDROID_NDK_HOME=/path/to/android-sdk/ndk/27.1.12297006
+chmod +x build-native.sh
 ./build-native.sh
-```
-This single command downloads, verifies, patches, and cross-compiles:
-1. `zlib 1.3.1`
-2. `GNU libiconv 1.17`
-3. `GNU gettext 0.22.5` (`libintl` with `--enable-nls` so engine diagnostics and output strings stay localized)
-4. `libxml2 2.12.7`
-5. `GNU Scientific Library (GSL) 2.8` (`libgsl` + `libgslcblas`)
-6. `GNU PSPP 2.1.2` (`libpspp`, `libpspp-core`, `libgl`, HTML/CSV/TXT output drivers)
-7. `libpspp_jni.so` into `app/src/main/jniLibs/{arm64-v8a,armeabi-v7a,x86_64}/libpspp_jni.so`
-
-### Step 2: Build Debug, Release, ABI Split & Universal APKs
-```bash
-gradle assembleDebug assembleRelease -PenableAbiSplits=true
-```
-To also invoke CMake (`app/src/main/cpp/CMakeLists.txt`) directly during the Gradle build after `build-native.sh` has populated `native-build/sysroot`:
-```bash
-gradle assembleDebug -PuseCmake=true
-```
-
-### Step 3: Run Unit & Robolectric Regression Tests
-```bash
-gradle :app:testDebugUnitTest
+./gradlew assembleDebug assembleRelease -PallowFallback=false
 ```
 
 ---
 
-## 3. GitHub Actions CI (`.github/workflows/build.yml`)
+## 3. Patches in `/patches/`
 
-Pushing this repository to GitHub automatically triggers `.github/workflows/build.yml`, which:
-1. Installs host autotools/GPG packages and Android SDK + NDK r27 (`27.0.12077973`).
-2. Runs `./build-native.sh` to build `app/src/main/jniLibs/<abi>/libpspp_jni.so`.
-3. Builds Debug, Release, ABI-split, and Universal APKs (falling back to `debug.keystore` when release signing secrets are not set).
-4. Runs `gradle :app:testDebugUnitTest`.
-5. Boots an x86_64 Android emulator via `reactivecircus/android-emulator-runner@v2` and runs `gradle connectedDebugAndroidTest`.
-6. Uploads all `.so` libraries, APKs, test reports, and logs as workflow artifacts.
+Each patch in `/patches/` (also mirrored in `app/src/main/assets/pspp/patches/` for in-app inspection on the About screen) begins with a one-line `Reason:` header and was generated directly against `pspp-2.1.2.tar.gz`:
 
----
-
-## 4. Known Limitations & Architectural Decisions
-
-1. **Cairo/Pango Headless Patch (`patches/01-disable-cairo-pango.patch`)**:
-   - Upstream PSPP 2.1.2 has `--without-gui`, `--without-libpq`, and `--without-perl-module`, but `configure.ac` unconditionally checks for `cairo >= 1.5 pango >= 1.22 pangocairo >= 1.22`.
-   - Patch 01 adds `--without-cairo` and guards `HAVE_CAIRO` in `src/output/driver.c` and `src/output/html.c` so the HTML, CSV, and ASCII/Text output drivers build without pulling in the X11/Freetype/Fontconfig/HarfBuzz/Pango/Cairo graphical stack.
-   - PDF export in the Android UI is achieved natively via Android's `PrintManager` + `WebView.createPrintDocumentAdapter()` on the rendered PSPP HTML output.
-2. **Process & Signal Safety (`pspp_jni.c` + `patches/04-library-reentrant-reset-and-exit-guard.patch`)**:
-   - The JNI wrapper executes the CLI engine inside an isolated `fork()` child process (with `sigsetjmp`/`siglongjmp` fallback if `fork` is restricted) under a global `pthread_mutex_t` lock so `exit()` or fatal signals never terminate the hosting Android UI process.
-3. **Pre-CI Fallback Evaluator (`PsppStatisticalEvaluator.kt`)**:
-   - When running in an environment where `libpspp_jni.so` has not yet been compiled by NDK (such as the cloud preview container or local JVM Robolectric tests), `PsppBridge` transparently evaluates the PSPP syntax and binary `$FL2` `.sav` files in Kotlin while displaying the engine mode in the About screen.
+1. `01-disable-cairo-pango.patch`: Add `--without-cairo` configure option and guard Cairo/Pango output drivers (`driver.c`, `output-item.h`, `html.c`, `tex.c`) while keeping HTML, CSV, and ASCII drivers enabled.
+2. `02-android-gnulib-bionic.patch`: Fix gnulib `freadahead.c` and `fseeko.c` stdio internals for Android Bionic `FILE` structs on API 24+.
+3. `03-android-tempdir-and-relocatable-paths.patch`: Respect Android `PSPP_TMPDIR`/`TMPDIR` in `temp-file.c` and `PSPP_LOCALEDIR` in `i18n.c` for extracted `.mo` catalogs.
+4. `04-library-reentrant-reset-and-exit-guard.patch`: Prevent `exit()`/`abort()` from killing the Android JVM process (`longjmp` to `pspp_jni_jmp_env`) and reset static driver/lexer state between JNI runs.
 
 ---
 
-## 5. How to Update to a Newer PSPP Release
+## 4. License
 
-1. Open `build-native.sh` and update `PSPP_VERSION="2.1.2"` to the new version string (e.g., `PSPP_VERSION="2.2.0"`).
-2. Verify whether the release manager's signing key in `https://ftp.gnu.org/gnu/gnu-keyring.gpg` has changed; if still signed by Ben Pfaff, keep `PINNED_FPR="C2D1AB061656AAC54B5E975485199DE8C6648E90"`.
-3. Run `./build-native.sh` and check if all 4 patch files in `/patches/*.patch` apply cleanly. If line offsets shifted in `configure.ac`, `src/output/driver.c`, or `src/ui/terminal/main.c`, refresh the patch hunks with `diff -u` and copy the updated `.patch` files to `app/src/main/assets/pspp/patches/`.
-4. Re-run `gradle :app:testDebugUnitTest` to verify all sample `.sps` regression tests pass.
+GNU PSPP and this Android application are licensed under the **GNU General Public License v3.0 or later (GPLv3+)**. See [`LICENSE`](LICENSE) and `app/src/main/assets/pspp/COPYING`.

@@ -1,0 +1,11 @@
+# Stored Expected Output tokens for bundled sample: regression.sps
+# Dataset: clinical_trial.csv (N = 20 cases, 14 variables)
+# Verified by both CI native engine test (ExampleInstrumentedTest) and JVM test (ExampleRobolectricTest).
+outcome_score
+adherence_score
+baseline_bp
+age
+(Constant)
+Reliability
+.99
+.90

@@ -1,57 +1,181 @@
-# Reason: Make Cairo/Pango/Pangocairo optional in PSPP 2.1.2 configure and stub cairo chart hooks when building headless CLI/HTML/CSV/TXT drivers for Android.
-# Note: PSPP 2.1.2 has --without-gui, --without-libpq, and --without-perl-module, but configure.ac unconditionally invokes PKG_CHECK_MODULES([CAIRO], [cairo >= 1.5 pango >= 1.22 pangocairo >= 1.22]).
-# Assumption (flagged in VERIFY.md): Patching configure + guarding HAVE_CAIRO in src/output/driver.c and src/output/charts/ allows HTML, CSV, and ASCII/text drivers to operate without linking libcairo/libpango/libharfbuzz/libfontconfig.
+# Reason: Make Cairo/Pango optional via --without-cairo so HTML, CSV, ASCII, ODT, SPV, and TeX drivers compile without Cairo/Pango.
 --- a/configure.ac
 +++ b/configure.ac
-@@ -178,10 +178,21 @@
--PKG_CHECK_MODULES([CAIRO], [cairo >= 1.5 pango >= 1.22 pangocairo >= 1.22], [],
+@@ -96,10 +96,21 @@
+ AC_ARG_VAR([PSPP_LDFLAGS], [linker flags to be used for linking the pspp binary only])
+ AC_ARG_VAR([PSPPIRE_LDFLAGS], [linker flags to be used for linking the psppire binary only])
+ 
+-# Support for Cairo and Pango.
+-PKG_CHECK_MODULES([CAIRO], [cairo >= 1.5 pango >= 1.22 pangocairo],
+-  [CPPFLAGS="$CPPFLAGS $CAIRO_CFLAGS"],
 -  [PSPP_REQUIRED_PREREQ([cairo 1.5 or later and pango 1.22 or later])])
++# Support for Cairo and Pango (optional via --without-cairo on Android).
 +AC_ARG_WITH([cairo],
-+  [AS_HELP_STRING([--without-cairo], [build without Cairo/Pango PDF/PostScript/SVG chart rendering (HTML/CSV/TXT drivers remain active)])],
++  [AS_HELP_STRING([--without-cairo], [Disable Cairo/Pango chart & PDF rendering])],
 +  [with_cairo=$withval],
 +  [with_cairo=yes])
-+AS_IF([test "x$with_cairo" != "xno"], [
-+  PKG_CHECK_MODULES([CAIRO], [cairo >= 1.5 pango >= 1.22 pangocairo >= 1.22],
-+    [AC_DEFINE([HAVE_CAIRO], [1], [Define to 1 if Cairo and Pango are available.])],
-+    [PSPP_REQUIRED_PREREQ([cairo 1.5 or later and pango 1.22 or later (or pass --without-cairo)])])
-+], [
-+  CAIRO_CFLAGS=""
-+  CAIRO_LIBS=""
-+  AC_SUBST([CAIRO_CFLAGS])
-+  AC_SUBST([CAIRO_LIBS])
-+])
++AS_IF([test "x$with_cairo" != "xno"],
++  [PKG_CHECK_MODULES([CAIRO], [cairo >= 1.5 pango >= 1.22 pangocairo],
++    [CPPFLAGS="$CPPFLAGS $CAIRO_CFLAGS"
++     AC_DEFINE([HAVE_CAIRO], [1], [Define to 1 if Cairo/Pango is enabled.])],
++    [PSPP_REQUIRED_PREREQ([cairo 1.5 or later and pango 1.22 or later])])],
++  [CAIRO_CFLAGS=""
++   CAIRO_LIBS=""
++   AC_SUBST([CAIRO_CFLAGS])
++   AC_SUBST([CAIRO_LIBS])])
 +AM_CONDITIONAL([HAVE_CAIRO], [test "x$with_cairo" != "xno"])
+ 
+ dnl One of the tests uses xmllint.
+ AC_CACHE_CHECK([for an xmllint program which fits our needs],[ac_cv_path_XMLLINT],
+--- a/src/output/output-item.h
++++ b/src/output/output-item.h
+@@ -22,7 +22,11 @@
+    An output item is a self-contained chunk of output.
+ */
+ 
++#ifdef HAVE_CAIRO
+ #include <cairo.h>
++#else
++typedef struct _cairo_surface cairo_surface_t;
++#endif
+ #include <stdbool.h>
+ #include "libpspp/cast.h"
+ #include "libpspp/string-array.h"
+--- a/src/output/output-item.c
++++ b/src/output/output-item.c
+@@ -91,7 +91,9 @@
+           break;
+ 
+         case OUTPUT_ITEM_IMAGE:
++#ifdef HAVE_CAIRO
+           cairo_surface_destroy (item->image);
++#endif
+           break;
+ 
+         case OUTPUT_ITEM_MESSAGE:
+@@ -169,7 +171,11 @@
+       break;
+ 
+     case OUTPUT_ITEM_IMAGE:
++#ifdef HAVE_CAIRO
+       new->image = cairo_surface_reference (old->image);
++#else
++      new->image = old->image;
++#endif
+       break;
+ 
+     case OUTPUT_ITEM_MESSAGE:
 --- a/src/output/driver.c
 +++ b/src/output/driver.c
-@@ -42,7 +42,9 @@
- static const struct output_driver_factory *const factories[] =
-   {
+@@ -520,10 +520,12 @@
+     &csv_driver_factory,
+     &odt_driver_factory,
+     &spv_driver_factory,
 +#ifdef HAVE_CAIRO
      &pdf_driver_factory,
      &ps_driver_factory,
      &svg_driver_factory,
+     &png_driver_factory,
 +#endif
-     &txt_driver_factory,
-     &html_driver_factory,
-     &csv_driver_factory,
-     &odt_driver_factory,
+     &tex_driver_factory,
      NULL
    };
 --- a/src/output/html.c
 +++ b/src/output/html.c
-@@ -312,11 +312,15 @@
+@@ -33,7 +33,9 @@
+ #include "libpspp/i18n.h"
+ #include "libpspp/message.h"
+ #include "libpspp/version.h"
++#ifdef HAVE_CAIRO
+ #include "output/cairo-chart.h"
++#endif
+ #include "output/chart.h"
+ #include "output/driver-provider.h"
+ #include "output/options.h"
+@@ -252,6 +254,7 @@
+   switch (item->type)
+     {
      case OUTPUT_ITEM_CHART:
 +#ifdef HAVE_CAIRO
-       if (html->chart_cnt++ > 0)
+       if (html->chart_file_name)
          {
-           char *file_name = xr_draw_png_chart (item->chart, html->file_name,
-                                                html->chart_cnt,
-                                                &html->fg, &html->bg);
-           fprintf (html->file, "<p><img src=\"%s\" alt=\"chart\"></p>\n",
-                    file_name);
-           free (file_name);
+           char *file_name = xr_draw_png_chart (item->chart,
+@@ -266,6 +269,7 @@
+               free (file_name);
+             }
          }
-+#else
-+      fprintf (html->file, "<div class=\"pspp-chart-note\">[Chart summary rendered in tabular output]</div>\n");
 +#endif
        break;
+ 
+     case OUTPUT_ITEM_GROUP:
+@@ -274,6 +278,7 @@
+       break;
+ 
+     case OUTPUT_ITEM_IMAGE:
++#ifdef HAVE_CAIRO
+       if (html->chart_file_name)
+         {
+           char *file_name = xr_write_png_image (
+@@ -284,6 +289,7 @@
+               free (file_name);
+             }
+         }
++#endif
+       break;
+ 
+     case OUTPUT_ITEM_MESSAGE:
+--- a/src/output/tex.c
++++ b/src/output/tex.c
+@@ -36,7 +36,9 @@
+ #include "libpspp/message.h"
+ #include "libpspp/temp-file.h"
+ #include "libpspp/version.h"
++#ifdef HAVE_CAIRO
+ #include "output/cairo-chart.h"
++#endif
+ #include "output/driver-provider.h"
+ #include "output/options.h"
+ #include "output/output-item.h"
+@@ -316,6 +318,7 @@
+   switch (item->type)
+     {
+     case OUTPUT_ITEM_CHART:
++#ifdef HAVE_CAIRO
+       if (tex->chart_file_name != NULL)
+         {
+           char *file_name = xr_draw_png_chart (item->chart,
+@@ -332,12 +335,14 @@
+               free (file_name);
+             }
+         }
++#endif
+       break;
+ 
+     case OUTPUT_ITEM_GROUP:
+       break;
+ 
+     case OUTPUT_ITEM_IMAGE:
++#ifdef HAVE_CAIRO
+       {
+         char *file_name = xr_write_png_image (
+           item->image, tex->chart_file_name, tex->n_charts++);
+@@ -348,6 +353,7 @@
+             free (file_name);
+           }
+       }
++#endif
+       break;
+ 
+     case OUTPUT_ITEM_MESSAGE:
+--- a/src/output/spv-driver.c
++++ b/src/output/spv-driver.c
+@@ -22,7 +22,9 @@
+ 
+ #include "data/file-handle-def.h"
+ #include "libpspp/cast.h"
++#ifdef HAVE_CAIRO
+ #include "output/cairo-chart.h"
++#endif
+ #include "output/output-item.h"
+ #include "output/page-setup.h"
+ #include "output/spv/spv-writer.h"

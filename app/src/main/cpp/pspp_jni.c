@@ -1,11 +1,12 @@
 /*
  * pspp_jni.c
- * Native JNI bridge between Android (com.example.engine.PsppBridge) and
+ * Native JNI bridge between Android (org.pspp.mobile.engine.PsppBridge) and
  * GNU PSPP 2.1.2 (libpspp, libpspp-core).
  *
  * Responsibilities:
  *   1. nativeInit(dataDir, tmpDir, localeDir):
- *      Configures TMPDIR, PSPP_DATADIR, PSPP_LOCALEDIR, and POSIX locale.
+ *      Configures TMPDIR, PSPP_DATADIR, PSPP_LOCALEDIR, POSIX locale, and
+ *      binds GNU gettext ("pspp" domain) to the extracted .mo directory.
  *   2. nativeRunSyntax(scriptPath, outputDir, format):
  *      Executes PSPP syntax inside a clean per-run working directory under a
  *      global execution mutex, isolating fatal signals/exit() via fork() +
@@ -15,9 +16,9 @@
  *      Signals the active child process (SIGINT/SIGTERM) and sets the atomic
  *      cancel flag in the PSPP syntax loop.
  *   4. nativeReadDataset(filePath, maxRows):
- *      Opens a .sav / .zsav / .por / .csv dataset via PSPP's any_reader API
- *      (libpspp-core) and serializes variable dictionary metadata and case rows
- *      into a structured JSON payload for the Compose Data Grid.
+ *      Opens a .sav / .zsav / .por / .csv dataset via PSPP's GET FILE /
+ *      SAVE TRANSLATE pipeline and serializes variable dictionary metadata and
+ *      case rows for the Compose Data Grid.
  */
 
 #include <jni.h>
@@ -38,6 +39,13 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#ifdef HAVE_PSPP_CORE
+#include <libintl.h>
+/* Forward declarations from patched PSPP 2.1.2 (src/ui/terminal/main.c & libpspp-core) */
+extern int pspp_cli_entry_main(int argc, char **argv);
+extern void pspp_request_cancel(void);
+#endif
+
 #define LOG_TAG "PSPP_JNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -48,12 +56,6 @@ static atomic_int g_cancel_flag = 0;
 static char g_data_dir[1024] = {0};
 static char g_tmp_dir[1024] = {0};
 static char g_locale_dir[1024] = {0};
-
-#ifdef HAVE_PSPP_CORE
-/* Forward declarations from patched PSPP 2.1.2 (src/ui/terminal/main.c & libpspp-core) */
-extern int pspp_cli_entry_main(int argc, char **argv);
-extern void pspp_request_cancel(void);
-#endif
 
 static void append_json_escaped(FILE *out, const char *str) {
     if (!str) {
@@ -83,7 +85,7 @@ static void append_json_escaped(FILE *out, const char *str) {
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_engine_PsppBridge_nativeInit(
+Java_org_pspp_mobile_engine_PsppBridge_nativeInit(
         JNIEnv *env,
         jobject thiz,
         jstring jDataDir,
@@ -109,6 +111,14 @@ Java_com_example_engine_PsppBridge_nativeInit(
     setenv("PSPP_DATADIR", g_data_dir, 1);
     setenv("PSPP_LOCALEDIR", g_locale_dir, 1);
     setlocale(LC_ALL, "");
+
+#ifdef HAVE_PSPP_CORE
+    /* Point GNU gettext directly at the extracted .mo message catalogs */
+    bindtextdomain("pspp", g_locale_dir);
+    bind_textdomain_codeset("pspp", "UTF-8");
+    textdomain("pspp");
+#endif
+
     pthread_mutex_unlock(&g_engine_mutex);
 
     (*env)->ReleaseStringUTFChars(env, jDataDir, data_dir);
@@ -121,7 +131,7 @@ Java_com_example_engine_PsppBridge_nativeInit(
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_example_engine_PsppBridge_nativeGetVersion(
+Java_org_pspp_mobile_engine_PsppBridge_nativeGetVersion(
         JNIEnv *env,
         jobject thiz) {
     (void)thiz;
@@ -129,7 +139,7 @@ Java_com_example_engine_PsppBridge_nativeGetVersion(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_engine_PsppBridge_nativeCancel(
+Java_org_pspp_mobile_engine_PsppBridge_nativeCancel(
         JNIEnv *env,
         jobject thiz) {
     (void)env;
@@ -146,7 +156,7 @@ Java_com_example_engine_PsppBridge_nativeCancel(
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_example_engine_PsppBridge_nativeRunSyntax(
+Java_org_pspp_mobile_engine_PsppBridge_nativeRunSyntax(
         JNIEnv *env,
         jobject thiz,
         jstring jScriptPath,
@@ -175,15 +185,15 @@ Java_com_example_engine_PsppBridge_nativeRunSyntax(
     int exit_code = 0;
 
 #ifdef HAVE_PSPP_CORE
-    /* Run in an isolated child process so exit(), abort(), or signal faults
-     * cannot take down the Android UI process, and working directory changes
-     * remain isolated. */
     pid_t pid = fork();
     if (pid == 0) {
-        /* Child process */
         if (chdir(output_dir) != 0) {
             _exit(126);
         }
+        bindtextdomain("pspp", g_locale_dir);
+        bind_textdomain_codeset("pspp", "UTF-8");
+        textdomain("pspp");
+
         int log_fd = open(err_log, O_CREAT | O_WRONLY | O_TRUNC, 0600);
         if (log_fd >= 0) {
             dup2(log_fd, STDOUT_FILENO);
@@ -217,7 +227,6 @@ Java_com_example_engine_PsppBridge_nativeRunSyntax(
             exit_code = -1;
         }
     } else {
-        /* Fallback to in-process invocation if fork() is blocked */
         char *argv_pspp[] = {
             (char *)"pspp",
             (char *)"-o", out_html,
@@ -232,7 +241,6 @@ Java_com_example_engine_PsppBridge_nativeRunSyntax(
     exit_code = -2;
 #endif
 
-    /* Format JSON response containing status, paths, and diagnostics */
     char *json_buf = NULL;
     size_t json_len = 0;
     FILE *mem = open_memstream(&json_buf, &json_len);
@@ -261,7 +269,7 @@ Java_com_example_engine_PsppBridge_nativeRunSyntax(
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_example_engine_PsppBridge_nativeReadDataset(
+Java_org_pspp_mobile_engine_PsppBridge_nativeReadDataset(
         JNIEnv *env,
         jobject thiz,
         jstring jFilePath,
@@ -269,9 +277,6 @@ Java_com_example_engine_PsppBridge_nativeReadDataset(
     (void)thiz;
     const char *file_path = (*env)->GetStringUTFChars(env, jFilePath, NULL);
 
-    /* When linked with HAVE_PSPP_CORE, converts a .sav/.zsav/.por file to CSV
-     * inside a temporary work folder via PSPP's GET FILE / SAVE TRANSLATE /TYPE=CSV
-     * pipeline so the dictionary and data rows are extracted losslessly. */
     char work_dir[1024];
     snprintf(work_dir, sizeof(work_dir), "%s/read_dataset", g_tmp_dir);
     mkdir(work_dir, 0700);

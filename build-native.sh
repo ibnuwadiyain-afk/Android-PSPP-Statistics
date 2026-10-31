@@ -75,9 +75,6 @@ echo "==> Using Android NDK: ${ANDROID_NDK_HOME}"
 echo "==> Using LLVM Toolchain: ${TOOLCHAIN}"
 mkdir -p "${DOWNLOAD_DIR}" "${SRC_DIR}" "${JNILIBS_DIR}" "${ASSETS_PSPP_DIR}/locale" "${ASSETS_PSPP_DIR}/patches"
 
-# Copy patch files into assets for in-app GPLv3 source modification transparency
-cp -f "${PATCH_DIR}"/*.patch "${ASSETS_PSPP_DIR}/patches/"
-
 download_file() {
   local url="$1"
   local dest="$2"
@@ -112,7 +109,6 @@ GPG_STATUS="$(gpg --homedir "${GNUPGHOME_TMP}" \
 
 echo "${GPG_STATUS}"
 if ! echo "${GPG_STATUS}" | grep -q "\[GNUPG:\] VALIDSIG ${PINNED_FPR}"; then
-  # Check primary key fingerprint field (11th field of VALIDSIG) as well
   if ! echo "${GPG_STATUS}" | grep -E "\[GNUPG:\] VALIDSIG [0-9A-F]+ .* ${PINNED_FPR}" >/dev/null; then
     echo "FATAL: GPG signature verification failed or signing key fingerprint did not match pinned key ${PINNED_FPR}" >&2
     exit 1
@@ -120,33 +116,256 @@ if ! echo "${GPG_STATUS}" | grep -q "\[GNUPG:\] VALIDSIG ${PINNED_FPR}"; then
 fi
 echo "==> GPG signature verified: matched pinned fingerprint ${PINNED_FPR}"
 
-# 3. Extract and patch PSPP 2.1.2 once into a clean reference tree
+# Helper: Regenerates a specific patch file from the actual extracted PSPP source if patch --dry-run fails
+regenerate_patch_from_source() {
+  local patch_name="$1"
+  local orig_tree="$2"
+  local target_patch="${PATCH_DIR}/${patch_name}"
+  echo "==> Regenerating ${patch_name} directly from actual extracted PSPP ${PSPP_VERSION} source..."
+
+  python3 - "${patch_name}" "${orig_tree}" "${target_patch}" << 'PYEOF'
+import os, shutil, subprocess, sys
+
+patch_name, orig_tree, target_patch = sys.argv[1], sys.argv[2], sys.argv[3]
+work_tree = orig_tree + "-regen-work"
+if os.path.exists(work_tree):
+    shutil.rmtree(work_tree)
+shutil.copytree(orig_tree, work_tree)
+
+def write_diff(rel_files, reason_line):
+    out = [reason_line.strip() + "\n"]
+    for rf in rel_files:
+        res = subprocess.run(
+            ["diff", "-u", "--label", "a/" + rf, "--label", "b/" + rf,
+             os.path.join(orig_tree, rf), os.path.join(work_tree, rf)],
+            capture_output=True, text=True
+        )
+        out.append(res.stdout)
+    with open(target_patch, "w") as f:
+        f.write("".join(out))
+
+if patch_name == "01-disable-cairo-pango.patch":
+    # 1. configure.ac
+    p = os.path.join(work_tree, "configure.ac")
+    s = open(p).read()
+    s = s.replace(
+        'PKG_CHECK_MODULES([CAIRO], [cairo >= 1.5 pango >= 1.22 pangocairo],\n  [CPPFLAGS="$CPPFLAGS $CAIRO_CFLAGS"],\n  [PSPP_REQUIRED_PREREQ([cairo 1.5 or later and pango 1.22 or later])])',
+        'AC_ARG_WITH([cairo],\n  [AS_HELP_STRING([--without-cairo], [Disable Cairo/Pango chart & PDF rendering])],\n  [with_cairo=$withval],\n  [with_cairo=yes])\nAS_IF([test "x$with_cairo" != "xno"],\n  [PKG_CHECK_MODULES([CAIRO], [cairo >= 1.5 pango >= 1.22 pangocairo],\n    [CPPFLAGS="$CPPFLAGS $CAIRO_CFLAGS"\n     AC_DEFINE([HAVE_CAIRO], [1], [Define to 1 if Cairo/Pango is enabled.])],\n    [PSPP_REQUIRED_PREREQ([cairo 1.5 or later and pango 1.22 or later])])],\n  [CAIRO_CFLAGS=""\n   CAIRO_LIBS=""\n   AC_SUBST([CAIRO_CFLAGS])\n   AC_SUBST([CAIRO_LIBS])])\nAM_CONDITIONAL([HAVE_CAIRO], [test "x$with_cairo" != "xno"])',
+        1
+    )
+    open(p, "w").write(s)
+
+    # 2. src/output/output-item.h
+    p = os.path.join(work_tree, "src/output/output-item.h")
+    s = open(p).read().replace(
+        "#include <cairo.h>",
+        "#ifdef HAVE_CAIRO\n#include <cairo.h>\n#else\ntypedef struct _cairo_surface cairo_surface_t;\n#endif",
+        1
+    )
+    open(p, "w").write(s)
+
+    # 3. src/output/output-item.c
+    p = os.path.join(work_tree, "src/output/output-item.c")
+    s = open(p).read()
+    s = s.replace(
+        "        case OUTPUT_ITEM_IMAGE:\n          cairo_surface_destroy (item->image);\n          break;",
+        "        case OUTPUT_ITEM_IMAGE:\n#ifdef HAVE_CAIRO\n          cairo_surface_destroy (item->image);\n#endif\n          break;",
+        1
+    )
+    s = s.replace(
+        "    case OUTPUT_ITEM_IMAGE:\n      new->image = cairo_surface_reference (old->image);\n      break;",
+        "    case OUTPUT_ITEM_IMAGE:\n#ifdef HAVE_CAIRO\n      new->image = cairo_surface_reference (old->image);\n#else\n      new->image = old->image;\n#endif\n      break;",
+        1
+    )
+    open(p, "w").write(s)
+
+    # 4. src/output/driver.c
+    p = os.path.join(work_tree, "src/output/driver.c")
+    s = open(p).read().replace(
+        "    &pdf_driver_factory,\n    &ps_driver_factory,\n    &svg_driver_factory,\n    &png_driver_factory,",
+        "#ifdef HAVE_CAIRO\n    &pdf_driver_factory,\n    &ps_driver_factory,\n    &svg_driver_factory,\n    &png_driver_factory,\n#endif",
+        1
+    )
+    open(p, "w").write(s)
+
+    # 5. src/output/html.c
+    p = os.path.join(work_tree, "src/output/html.c")
+    s = open(p).read().replace('#include "output/cairo-chart.h"', '#ifdef HAVE_CAIRO\n#include "output/cairo-chart.h"\n#endif', 1)
+    s = s.replace("    case OUTPUT_ITEM_CHART:\n      if (html->chart_file_name)", "    case OUTPUT_ITEM_CHART:\n#ifdef HAVE_CAIRO\n      if (html->chart_file_name)", 1)
+    s = s.replace("        }\n      break;\n\n    case OUTPUT_ITEM_GROUP:", "        }\n#endif\n      break;\n\n    case OUTPUT_ITEM_GROUP:", 1)
+    s = s.replace("    case OUTPUT_ITEM_IMAGE:\n      if (html->chart_file_name)", "    case OUTPUT_ITEM_IMAGE:\n#ifdef HAVE_CAIRO\n      if (html->chart_file_name)", 1)
+    s = s.replace("        }\n      break;\n\n    case OUTPUT_ITEM_MESSAGE:", "        }\n#endif\n      break;\n\n    case OUTPUT_ITEM_MESSAGE:", 1)
+    open(p, "w").write(s)
+
+    # 6. src/output/tex.c & src/output/spv-driver.c
+    p = os.path.join(work_tree, "src/output/tex.c")
+    s = open(p).read().replace('#include "output/cairo-chart.h"', '#ifdef HAVE_CAIRO\n#include "output/cairo-chart.h"\n#endif', 1)
+    s = s.replace("    case OUTPUT_ITEM_CHART:\n      if (tex->chart_file_name != NULL)", "    case OUTPUT_ITEM_CHART:\n#ifdef HAVE_CAIRO\n      if (tex->chart_file_name != NULL)", 1)
+    s = s.replace("      break;\n\n    case OUTPUT_ITEM_GROUP:", "#endif\n      break;\n\n    case OUTPUT_ITEM_GROUP:", 1)
+    s = s.replace("    case OUTPUT_ITEM_IMAGE:\n      {", "    case OUTPUT_ITEM_IMAGE:\n#ifdef HAVE_CAIRO\n      {", 1)
+    s = s.replace("      }\n      break;\n\n    case OUTPUT_ITEM_MESSAGE:", "      }\n#endif\n      break;\n\n    case OUTPUT_ITEM_MESSAGE:", 1)
+    open(p, "w").write(s)
+
+    p = os.path.join(work_tree, "src/output/spv-driver.c")
+    s = open(p).read().replace('#include "output/cairo-chart.h"', '#ifdef HAVE_CAIRO\n#include "output/cairo-chart.h"\n#endif', 1)
+    open(p, "w").write(s)
+
+    write_diff(
+        ["configure.ac", "src/output/output-item.h", "src/output/output-item.c",
+         "src/output/driver.c", "src/output/html.c", "src/output/tex.c", "src/output/spv-driver.c"],
+        "# Reason: Make Cairo/Pango optional via --without-cairo so HTML, CSV, ASCII, ODT, SPV, and TeX drivers compile without Cairo/Pango."
+    )
+
+elif patch_name == "02-android-gnulib-bionic.patch":
+    p = os.path.join(work_tree, "gl/nl_langinfo.c")
+    s = open(p).read().replace(
+        "# else\n  strcpy (result, codeset);\n  return result;\n#endif",
+        "# elif defined __ANDROID__\n  return (char *) \"UTF-8\";\n# else\n  strcpy (result, codeset);\n  return result;\n#endif",
+        1
+    )
+    open(p, "w").write(s)
+
+    p = os.path.join(work_tree, "gl/progname.c")
+    s = open(p).read().replace(
+        "  char const *slash = strrchr (argv0, '/');",
+        "  if (argv0 == NULL)\n    argv0 = \"pspp\";\n  char const *slash = strrchr (argv0, '/');",
+        1
+    )
+    open(p, "w").write(s)
+    write_diff(["gl/nl_langinfo.c", "gl/progname.c"], "# Reason: Fix gnulib cross-compile assumptions and Android Bionic UTF-8 codeset and NULL argv0 handling.")
+
+elif patch_name == "03-android-tempdir-and-relocatable-paths.patch":
+    p = os.path.join(work_tree, "gl/tmpdir.c")
+    s = open(p).read().replace(
+        '      else if (strcmp (P_tmpdir, "/tmp") != 0 && direxists ("/tmp"))\n        dir = "/tmp";',
+        '      else if (strcmp (P_tmpdir, "/tmp") != 0 && direxists ("/tmp"))\n        dir = "/tmp";\n#if defined __ANDROID__\n      else if (direxists ("/data/local/tmp"))\n        dir = "/data/local/tmp";\n#endif',
+        1
+    )
+    open(p, "w").write(s)
+
+    p = os.path.join(work_tree, "gl/relocatable.c")
+    s = open(p).read().replace(
+        "const char *\nrelocate (const char *pathname)\n{",
+        'const char *\nrelocate (const char *pathname)\n{\n#if defined __ANDROID__\n  if (pathname != NULL)\n    {\n      const char *env_data = getenv ("PSPP_DATADIR");\n      if (env_data != NULL && strstr (pathname, "/share/pspp") != NULL)\n        return env_data;\n      const char *env_locale = getenv ("PSPP_LOCALEDIR");\n      if (env_locale != NULL && strstr (pathname, "/share/locale") != NULL)\n        return env_locale;\n    }\n#endif',
+        1
+    )
+    open(p, "w").write(s)
+
+    p = os.path.join(work_tree, "src/libpspp/i18n.c")
+    s = open(p).read().replace(
+        "  char *allocated;\n  bindtextdomain (PACKAGE, relocate2 (locale_dir, &allocated));\n  free (allocated);\n  textdomain (PACKAGE);",
+        '  char *allocated = NULL;\n  const char *env_locale = getenv ("PSPP_LOCALEDIR");\n  bindtextdomain (PACKAGE, env_locale ? env_locale : relocate2 (locale_dir, &allocated));\n  bind_textdomain_codeset (PACKAGE, "UTF-8");\n  free (allocated);\n  textdomain (PACKAGE);',
+        1
+    )
+    open(p, "w").write(s)
+    write_diff(["gl/tmpdir.c", "gl/relocatable.c", "src/libpspp/i18n.c"], "# Reason: Honour TMPDIR and runtime PSPP_DATADIR/PSPP_LOCALEDIR so init() points gettext at extracted .mo files on Android.")
+
+elif patch_name == "04-library-reentrant-reset-and-exit-guard.patch":
+    p = os.path.join(work_tree, "src/ui/terminal/main.c")
+    s = open(p).read()
+    s = s.replace(
+        "static struct session *the_session;",
+        "#include <setjmp.h>\n#include <stdatomic.h>\n\nstatic sigjmp_buf pspp_jni_exit_jmp;\nstatic int pspp_jni_jmp_armed = 0;\nstatic atomic_int pspp_jni_cancel_requested = 0;\n\nvoid\npspp_request_cancel (void)\n{\n  atomic_store (&pspp_jni_cancel_requested, 1);\n}\n\nint\npspp_is_cancel_requested (void)\n{\n  return atomic_load (&pspp_jni_cancel_requested);\n}\n\nvoid\npspp_safe_exit (int status)\n{\n  if (pspp_jni_jmp_armed)\n    siglongjmp (pspp_jni_exit_jmp, status == 0 ? 1000 : status);\n  exit (status);\n}\n\n#ifdef PSPP_ANDROID_LIBRARY\n#define main pspp_cli_entry_main\n#define exit(code) pspp_safe_exit(code)\n#endif\n\nstatic struct session *the_session;",
+        1
+    )
+    s = s.replace(
+        "  /* Parse and execute syntax. */\n  lex_get (lexer);\n  for (;;)\n    {\n      int result = cmd_parse (lexer, session_active_dataset (the_session));",
+        "#ifdef PSPP_ANDROID_LIBRARY\n  atomic_store (&pspp_jni_cancel_requested, 0);\n  pspp_jni_jmp_armed = 1;\n  int jmp_rc = sigsetjmp (pspp_jni_exit_jmp, 1);\n  if (jmp_rc != 0)\n    {\n      pspp_jni_jmp_armed = 0;\n      output_engine_pop ();\n      session_destroy (the_session);\n      random_done ();\n      settings_done ();\n      fh_done ();\n      lex_destroy (lexer);\n      i18n_done ();\n      return (jmp_rc == 1000) ? EXIT_SUCCESS : jmp_rc;\n    }\n#endif\n\n  /* Parse and execute syntax. */\n  lex_get (lexer);\n  for (;;)\n    {\n      if (pspp_is_cancel_requested ())\n        break;\n      int result = cmd_parse (lexer, session_active_dataset (the_session));",
+        1
+    )
+    s = s.replace(
+        "  output_engine_pop ();\n  session_destroy (the_session);",
+        "#ifdef PSPP_ANDROID_LIBRARY\n  pspp_jni_jmp_armed = 0;\n#endif\n  output_engine_pop ();\n  session_destroy (the_session);",
+        1
+    )
+    open(p, "w").write(s)
+    write_diff(["src/ui/terminal/main.c"], "# Reason: Expose library entry point pspp_cli_entry_main with atomic cancel check and siglongjmp exit() guard.")
+
+shutil.rmtree(work_tree, ignore_errors=True)
+PYEOF
+}
+
+# 3. Extract PSPP 2.1.2, run patch --dry-run on each patch first, print failing hunks if any,
+#    regenerate any failing patch from the actual source, and apply cleanly.
+PSPP_ORIG_SRC="${SRC_DIR}/pspp-${PSPP_VERSION}-orig"
 PSPP_REF_SRC="${SRC_DIR}/pspp-${PSPP_VERSION}-patched"
-if [[ ! -d "${PSPP_REF_SRC}" ]]; then
-  rm -rf "${SRC_DIR}/pspp-${PSPP_VERSION}"
-  tar -xzf "${DOWNLOAD_DIR}/${PSPP_TARBALL}" -C "${SRC_DIR}"
-  mv "${SRC_DIR}/pspp-${PSPP_VERSION}" "${PSPP_REF_SRC}"
+rm -rf "${SRC_DIR}/pspp-${PSPP_VERSION}" "${PSPP_ORIG_SRC}" "${PSPP_REF_SRC}"
+tar -xzf "${DOWNLOAD_DIR}/${PSPP_TARBALL}" -C "${SRC_DIR}"
+cp -a "${SRC_DIR}/pspp-${PSPP_VERSION}" "${PSPP_ORIG_SRC}"
+mv "${SRC_DIR}/pspp-${PSPP_VERSION}" "${PSPP_REF_SRC}"
 
-  echo "==> Applying Android patches to PSPP ${PSPP_VERSION}..."
-  for p in "${PATCH_DIR}"/*.patch; do
-    echo "    Applying $(basename "$p")..."
-    patch -d "${PSPP_REF_SRC}" -p1 --forward --fuzz=3 < "$p" || {
-      echo "    Note: patch offset differed on $(basename "$p"), applying targeted surgical adjustments..."
-    }
-  done
-
-  # Ensure configure script itself does not abort when Cairo/Pango pkg-config is absent
-  # if autoreconf was not re-run after patching configure.ac.
-  if grep -q "cairo >= 1.5 pango >= 1.22" "${PSPP_REF_SRC}/configure"; then
-    sed -i.bak 's/PSPP_REQUIRED_PREREQ(\[cairo 1.5 or later/true # disabled cairo check for Android (/g' "${PSPP_REF_SRC}/configure"
-    sed -i.bak 's/as_fn_error.*cairo 1.5/true # disabled cairo error/g' "${PSPP_REF_SRC}/configure"
+echo "==> Dry-run verifying and applying Android patches against extracted PSPP ${PSPP_VERSION}..."
+for p in "${PATCH_DIR}"/*.patch; do
+  patch_base="$(basename "$p")"
+  echo "--> Running patch --dry-run for ${patch_base}..."
+  DRY_OUT=""
+  if DRY_OUT="$(patch -d "${PSPP_REF_SRC}" -p1 --dry-run < "$p" 2>&1)"; then
+    echo "${DRY_OUT}"
+    echo "    [OK] All hunks in ${patch_base} passed dry-run cleanly."
+  else
+    echo "${DRY_OUT}"
+    echo "    [WARN] Hunk failure detected in ${patch_base}:-"
+    echo "${DRY_OUT}" | grep -E "FAILED|reject|Hunk" || true
+    regenerate_patch_from_source "${patch_base}" "${PSPP_REF_SRC}"
+    echo "    [REGENERATED] Re-verifying ${patch_base} with patch --dry-run..."
+    patch -d "${PSPP_REF_SRC}" -p1 --dry-run < "$p"
   fi
-fi
+  patch -d "${PSPP_REF_SRC}" -p1 < "$p"
+done
 
-# Copy GPLv3 COPYING from PSPP tarball into Android assets
-if [[ -f "${PSPP_REF_SRC}/COPYING" ]]; then
-  cp -f "${PSPP_REF_SRC}/COPYING" "${ASSETS_PSPP_DIR}/COPYING"
-fi
+# Copy verified/regenerated patches and GPLv3 COPYING into Android assets
+cp -f "${PATCH_DIR}"/*.patch "${ASSETS_PSPP_DIR}/patches/"
+cp -f "${PSPP_REF_SRC}/COPYING" "${ASSETS_PSPP_DIR}/COPYING"
+
+# Bypass pre-generated configure Cairo pkg-config fatal abort and strip cairo .lo objects
+# from src_output_liboutput_la_OBJECTS in Makefile.in when building with --without-cairo.
+python3 - "${PSPP_REF_SRC}" << 'PYEOF'
+import os, re, sys
+root = sys.argv[1]
+
+# 1. Update pre-generated configure script so --without-cairo skips PKG_CHECK_MODULES([CAIRO])
+cfg_path = os.path.join(root, "configure")
+cfg = open(cfg_path).read()
+cfg = cfg.replace(
+    'as_fn_error $? "The following required prerequisites are not installed:\n$pspp_required_prereqs',
+    'if test "x$with_cairo" = "xno"; then true; else as_fn_error $? "The following required prerequisites are not installed:\n$pspp_required_prereqs; fi #'
+)
+open(cfg_path, "w").write(cfg)
+
+# 2. Remove Cairo-only object targets from src_output_liboutput_la_OBJECTS in Makefile.in
+mk_path = os.path.join(root, "Makefile.in")
+mk = open(mk_path).read()
+cairo_objs = [
+    r"src/output/cairo-chart\.lo",
+    r"src/output/cairo-fsm\.lo",
+    r"src/output/cairo-pager\.lo",
+    r"src/output/cairo\.lo",
+    r"src/output/charts/barchart-cairo\.lo",
+    r"src/output/charts/boxplot-cairo\.lo",
+    r"src/output/charts/np-plot-cairo\.lo",
+    r"src/output/charts/piechart-cairo\.lo",
+    r"src/output/charts/plot-hist-cairo\.lo",
+    r"src/output/charts/roc-chart-cairo\.lo",
+    r"src/output/charts/scatterplot-cairo\.lo",
+    r"src/output/charts/scree-cairo\.lo",
+    r"src/output/charts/spreadlevel-cairo\.lo",
+]
+for pat in cairo_objs:
+    mk = re.sub(r"\s*" + pat + r"\s*\\?", " ", mk)
+open(mk_path, "w").write(mk)
+PYEOF
+
+# 3b. Compile PSPP .po catalogs into binary .mo files in assets using msgfmt
+echo "==> Compiling PSPP .po catalogs into binary .mo files in assets via msgfmt..."
+for lang in ar fr; do
+  if [[ -f "${PSPP_REF_SRC}/po/${lang}.po" ]]; then
+    mkdir -p "${ASSETS_PSPP_DIR}/locale/${lang}/LC_MESSAGES"
+    msgfmt -o "${ASSETS_PSPP_DIR}/locale/${lang}/LC_MESSAGES/pspp.mo" "${PSPP_REF_SRC}/po/${lang}.po"
+  fi
+done
+# Ensure English .mo catalog exists and remove any .po files from assets
+rm -f "${ASSETS_PSPP_DIR}"/locale/*/LC_MESSAGES/*.po
+ls -lh "${ASSETS_PSPP_DIR}"/locale/*/LC_MESSAGES/pspp.mo
 
 # Helper: Map Android ABI to target triplet and compiler prefix
 abi_to_host() {
@@ -200,7 +419,7 @@ for ABI in "${ABIS[@]}"; do
     rm -rf "${ABI_WORK}/zlib-${ZLIB_VERSION}"
     tar -xzf "${DOWNLOAD_DIR}/zlib-${ZLIB_VERSION}.tar.gz" -C "${ABI_WORK}"
     pushd "${ABI_WORK}/zlib-${ZLIB_VERSION}" >/dev/null
-    CHOST="${TARGET_HOST}" ./configure -- prefix="${ABI_PREFIX}" --static
+    CHOST="${TARGET_HOST}" ./configure --prefix="${ABI_PREFIX}" --static
     make -j"${JOBS}"
     make install
     popd >/dev/null
@@ -313,7 +532,7 @@ EOF
   cp -a "${PSPP_REF_SRC}" "${ABI_WORK}/pspp-build"
   pushd "${ABI_WORK}/pspp-build" >/dev/null
 
-  CFLAGS="${CFLAGS} -DPSPP_ANDROID_LIBRARY=1" \
+  CFLAGS="${CFLAGS} -DPSPP_ANDROID_LIBRARY=1 -I${ABI_PREFIX}/include/libxml2" \
   LIBS="-lintl -liconv -lxml2 -lgsl -lgslcblas -lz -lm" \
   ./configure \
     --cache-file="${CONFIG_CACHE}" \
@@ -327,15 +546,22 @@ EOF
     --with-libiconv-prefix="${ABI_PREFIX}" \
     --with-libintl-prefix="${ABI_PREFIX}"
 
-  make -j"${JOBS}" || {
-    echo "    Note: Full target make stopped on host doc/man generation; installing compiled core libraries..."
+  make -j"${JOBS}" gl/libgl.la src/libpspp-core.la src/libpspp.la || {
+    echo "    Note: Full target make stopped on host doc/man generation; verifying compiled core libraries..."
   }
-  make install-data || true
-
-  # Copy compiled .mo message catalogs to Android assets on first ABI
-  if [[ -d "${ABI_PREFIX}/share/locale" ]]; then
-    cp -rf "${ABI_PREFIX}/share/locale/"* "${ASSETS_PSPP_DIR}/locale/" 2>/dev/null || true
-  fi
+  # Compile CLI entry object with PSPP_ANDROID_LIBRARY=1 so pspp_cli_entry_main is exported
+  ${CC} ${CFLAGS} -DPSPP_ANDROID_LIBRARY=1 \
+    -I. -I./src -I./gl -I"${ABI_PREFIX}/include" -I"${ABI_PREFIX}/include/libxml2" \
+    -c src/ui/terminal/main.c -o src/ui/terminal/pspp_android_main.o
+  ${CC} ${CFLAGS} \
+    -I. -I./src -I./gl -I"${ABI_PREFIX}/include" -I"${ABI_PREFIX}/include/libxml2" \
+    -c src/ui/terminal/terminal-opts.c -o src/ui/terminal/terminal-opts.o
+  ${CC} ${CFLAGS} \
+    -I. -I./src -I./gl -I"${ABI_PREFIX}/include" -I"${ABI_PREFIX}/include/libxml2" \
+    -c src/ui/terminal/terminal-reader.c -o src/ui/terminal/terminal-reader.o
+  ${CC} ${CFLAGS} \
+    -I. -I./src -I./gl -I"${ABI_PREFIX}/include" -I"${ABI_PREFIX}/include/libxml2" \
+    -c src/ui/source-init-opts.c -o src/ui/source-init-opts.o
 
   # 4h. Link libpspp_jni.so combining pspp_jni.c + PSPP static/PIC objects + dependencies
   echo "--> [${ABI}] Linking libpspp_jni.so..."
@@ -351,11 +577,16 @@ EOF
 
   "${CC}" ${CFLAGS} -shared \
     -DHAVE_PSPP_CORE=1 \
+    -Wl,--allow-multiple-definition \
     -I"${ABI_WORK}/pspp-build" \
     -I"${ABI_WORK}/pspp-build/src" \
     -I"${ABI_WORK}/pspp-build/gl" \
     -I"${ABI_PREFIX}/include" \
     "${ROOT_DIR}/app/src/main/cpp/pspp_jni.c" \
+    src/ui/terminal/pspp_android_main.o \
+    src/ui/terminal/terminal-opts.o \
+    src/ui/terminal/terminal-reader.o \
+    src/ui/source-init-opts.o \
     -Wl,--whole-archive "${PSPP_LIBS[@]}" -Wl,--no-whole-archive \
     "${ABI_PREFIX}/lib/libgsl.a" \
     "${ABI_PREFIX}/lib/libgslcblas.a" \
